@@ -165,7 +165,7 @@
 <script>
 const SUPA_URL = 'https://lwwsuzemxypsyeqotsue.supabase.co';
 const SUPA_KEY = 'sb_publishable_XveX8gC1JULV6wbhtc8T0g_mZ0bVlTQ';
-const COHERE_KEY = 'rMkJqqpllVMorKo9V6X4vWp3p0rPQ7s4EaxphhLo';  
+const GEMINI_KEY = 'AIzaSyD7XZRWjTFeapA4X6jWxMkhRySo1q1ZrKM'; 
 
 let data = [], eid = null;
 
@@ -365,11 +365,14 @@ function closeDetail() { document.getElementById('detailOverlay').classList.remo
 
 
 
+
+
 async function analyzeAI(id) {
   const d = data.find(x=>x.id===id); if (!d) return;
   const box = document.getElementById('aiResult');
-  box.innerHTML = `<div class="ai-box" style="display:flex;align-items:center;gap:10px"><div class="spinner"></div><span style="color:var(--text2)">Analizando con IA...</span></div>`;
-  const prompt = `Sos un analista político argentino especializado en el Congreso Nacional. Usá tu conocimiento sobre política argentina para estimar la probabilidad individual (%) de que el siguiente legislador vote A FAVOR de una ley de eutanasia o muerte digna en Argentina.
+  box.innerHTML = `<div class="ai-box" style="display:flex;align-items:center;gap:10px"><div class="spinner"></div><span style="color:var(--text2)">Buscando información y analizando con Gemini...</span></div>`;
+  const prompt = `Sos un analista político argentino especializado en el Congreso Nacional.
+Estimá la probabilidad individual (%) de que el siguiente legislador vote A FAVOR de una ley de eutanasia o muerte digna en Argentina.
 
 Datos disponibles:
 - Nombre: ${d.nombre}
@@ -383,29 +386,27 @@ Datos disponibles:
 - Declaraciones públicas: ${d.decl||'ninguna'}
 - Notas: ${d.notas||'ninguna'}
 
-Basándote en estos datos y en tu conocimiento sobre este legislador y el contexto político argentino, respondé con este formato exacto:
+Buscá información adicional sobre este legislador en internet y respondé con este formato exacto:
 
 PROBABILIDAD: X%
 FACTORES A FAVOR: (máx 3 puntos)
 FACTORES EN CONTRA: (máx 3 puntos)
-CONTEXTO POLÍTICO: (qué sabés de este legislador o su bloque que sea relevante)
+INFO NUEVA ENCONTRADA: (declaraciones o datos relevantes encontrados en internet)
 INCERTIDUMBRE: alto/medio/bajo — (motivo)
 
 Máximo 250 palabras. En español. Sin markdown.`;
   try {
-    const res = await fetch('https://api.cohere.com/v2/chat', {
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_KEY}`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer ' + COHERE_KEY
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'command-r-plus',
-        messages: [{ role: 'user', content: prompt }]
+        contents: [{ parts: [{ text: prompt }] }],
+        tools: [{ google_search: {} }]
       })
     });
     const json = await res.json();
-    const text = json.message?.content?.[0]?.text?.trim() || json.text?.trim() || 'Sin respuesta.';
+    const parts = json.candidates?.[0]?.content?.parts || [];
+    const text = parts.filter(p=>p.text).map(p=>p.text).join('\n').trim() || 'Sin respuesta.';
     const newProb = extractProb(text, d.prob);
     await supaFetch(`legisladores?id=eq.${id}`, 'PATCH', {
       ai_analysis: text, ai_updated_at: new Date().toISOString(), prob: newProb
@@ -415,11 +416,11 @@ Máximo 250 palabras. En español. Sin markdown.`;
     render();
     const pc = probColor(newProb);
     box.innerHTML = `<div class="ai-box">
-      <p style="font-size:11px;color:var(--text2);margin-bottom:8px">Análisis IA (Cohere) · ${new Date().toLocaleString('es-AR')} · Prob. actualizada: <strong style="color:${pc}">${newProb}%</strong></p>
+      <p style="font-size:11px;color:var(--text2);margin-bottom:8px">Análisis IA (Gemini) · ${new Date().toLocaleString('es-AR')} · Prob. actualizada: <strong style="color:${pc}">${newProb}%</strong></p>
       <p style="white-space:pre-wrap;font-size:13px;line-height:1.65">${text}</p>
     </div>`;
   } catch(e) {
-    box.innerHTML = `<div class="ai-box"><span style="color:var(--contra)">Error al conectar con Cohere. Revisá la API key en el código.</span></div>`;
+    box.innerHTML = `<div class="ai-box"><span style="color:var(--contra)">Error al conectar con Gemini. Revisá la API key en el código.</span></div>`;
   }
 }
 
